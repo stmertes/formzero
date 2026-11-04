@@ -76,7 +76,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       return redirect("/error?error=unsupported_content_type");
     }
 
-        // Turnstile spam check (skipped if no secret key is configured)
+            // Turnstile spam check (skipped if no secret key is configured)
     const turnstileSecret = (context.cloudflare.env as any).TURNSTILE_SECRET_KEY as
       | string
       | undefined;
@@ -109,10 +109,10 @@ export async function action({ request, params, context }: Route.ActionArgs) {
         }
         return redirect("/error?error=spam_check_failed");
       }
-
-      // Don't store the token with the submission
-      delete submissionData["cf-turnstile-response"];
     }
+
+    // Never store the token with the submission
+    delete submissionData["cf-turnstile-response"];
     
     // Generate submission ID and timestamp
     const submissionId = crypto.randomUUID();
