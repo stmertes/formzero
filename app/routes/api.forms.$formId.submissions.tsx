@@ -76,6 +76,44 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       return redirect("/error?error=unsupported_content_type");
     }
 
+        // Turnstile spam check (skipped if no secret key is configured)
+    const turnstileSecret = (context.cloudflare.env as any).TURNSTILE_SECRET_KEY as
+      | string
+      | undefined;
+    if (turnstileSecret) {
+      const token = submissionData["cf-turnstile-response"];
+      let verified = false;
+
+      if (typeof token === "string" && token) {
+        const verifyRes = await fetch(
+          "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+          {
+            method: "POST",
+            body: new URLSearchParams({
+              secret: turnstileSecret,
+              response: token,
+              remoteip: request.headers.get("CF-Connecting-IP") ?? "",
+            }),
+          }
+        );
+        const outcome = (await verifyRes.json()) as { success: boolean };
+        verified = outcome.success === true;
+      }
+
+      if (!verified) {
+        if (isJsonRequest) {
+          return data(
+            { success: false, error: "Spam check failed" },
+            { status: 403, headers: corsHeaders }
+          );
+        }
+        return redirect("/error?error=spam_check_failed");
+      }
+
+      // Don't store the token with the submission
+      delete submissionData["cf-turnstile-response"];
+    }
+    
     // Generate submission ID and timestamp
     const submissionId = crypto.randomUUID();
     const createdAt = Date.now();
