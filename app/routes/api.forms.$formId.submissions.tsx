@@ -84,39 +84,51 @@ export async function action({ request, params, context }: Route.ActionArgs) {
         { status: 403, headers: corsHeaders }
       );
     }
-            // Turnstile spam check (skipped if no secret key is configured)
-    const turnstileSecret = (context.cloudflare.env as any).TURNSTILE_SECRET_KEY as
-      | string
-      | undefined;
-    if (turnstileSecret) {
-      const token = submissionData["cf-turnstile-response"];
-      let verified = false;
+// Turnstile spam protection — fail closed
+    const turnstileSecret = (context.cloudflare.env as any)
+      .TURNSTILE_SECRET_KEY as string | undefined;
 
-      if (typeof token === "string" && token) {
-        const verifyRes = await fetch(
-          "https://challenges.cloudflare.com/turnstile/v0/siteverify",
-          {
-            method: "POST",
-            body: new URLSearchParams({
-              secret: turnstileSecret,
-              response: token,
-              remoteip: request.headers.get("CF-Connecting-IP") ?? "",
-            }),
-          }
-        );
+    // Reject submissions if the secret is missing
+    if (!turnstileSecret) {
+      console.error("TURNSTILE_SECRET_KEY is not configured");
+
+      return data(
+        { success: false, error: "Spam protection is unavailable" },
+        { status: 500, headers: corsHeaders }
+      );
+    }
+
+    const token = submissionData["cf-turnstile-response"];
+    let verified = false;
+
+    if (typeof token === "string" && token.trim() !== "") {
+      const verifyRes = await fetch(
+        "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+        {
+          method: "POST",
+          body: new URLSearchParams({
+            secret: turnstileSecret,
+            response: token,
+            remoteip: request.headers.get("CF-Connecting-IP") ?? "",
+          }),
+        }
+      );
+
+      if (verifyRes.ok) {
         const outcome = (await verifyRes.json()) as { success: boolean };
         verified = outcome.success === true;
       }
+    }
 
-      if (!verified) {
-        if (isJsonRequest) {
-          return data(
-            { success: false, error: "Spam check failed" },
-            { status: 403, headers: corsHeaders }
-          );
-        }
-        return redirect("/error?error=spam_check_failed");
+    if (!verified) {
+      if (isJsonRequest) {
+        return data(
+          { success: false, error: "Spam check failed" },
+          { status: 403, headers: corsHeaders }
+        );
       }
+
+      return redirect("/error?error=spam_check_failed");
     }
 
     // Never store the token with the submission
