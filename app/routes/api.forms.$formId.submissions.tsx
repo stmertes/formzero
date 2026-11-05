@@ -75,7 +75,15 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       }
       return redirect("/error?error=unsupported_content_type");
     }
+// Honeypot spam protection
+    const honeypot = submissionData["website"];
 
+    if (typeof honeypot === "string" && honeypot.trim() !== "") {
+      return data(
+        { success: false, error: "Spam detected" },
+        { status: 403, headers: corsHeaders }
+      );
+    }
             // Turnstile spam check (skipped if no secret key is configured)
     const turnstileSecret = (context.cloudflare.env as any).TURNSTILE_SECRET_KEY as
       | string
